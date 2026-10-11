@@ -71,6 +71,8 @@ export interface RepositoryResponse {
   fullName: string;
   isEnabled: boolean;
   lastSyncAt: Date | null;
+  commitCount?: number;
+  sqsScore?: number;
 }
 
 /**
@@ -420,16 +422,59 @@ export class GitHubService {
     }
   }
 
+  private async getProjectScoreMap(
+    repos: Array<{ projectRepositories?: Array<{ projectId: string }> }>,
+  ): Promise<Map<string, number>> {
+    const projectScoreMap = new Map<string, number>();
+    const projectIds = repos
+      .flatMap((r) => r.projectRepositories?.map((pr) => pr.projectId) || [])
+      .filter(Boolean);
+
+    if (projectIds.length > 0 && this.prisma.sQSScore?.findMany) {
+      const latestScores = await this.prisma.sQSScore.findMany({
+        where: { projectId: { in: projectIds } },
+        orderBy: { calculatedAt: 'desc' },
+      });
+      for (const s of latestScores) {
+        if (!projectScoreMap.has(s.projectId)) {
+          projectScoreMap.set(s.projectId, Number(s.score.toFixed(1)));
+        }
+      }
+    }
+
+    return projectScoreMap;
+  }
+
+  private resolveSqsScore(
+    projectRepositories: Array<{ projectId: string }> | undefined,
+    projectScoreMap: Map<string, number>,
+  ): number | undefined {
+    if (!projectRepositories) return undefined;
+    for (const pr of projectRepositories) {
+      if (projectScoreMap.has(pr.projectId)) {
+        return projectScoreMap.get(pr.projectId);
+      }
+    }
+    return undefined;
+  }
+
   /**
    * List available repositories from GitHub using Octokit pagination
    * When onlyConnected is true, returns only connected/enabled repositories from the database
    */
   async listRepositories(organizationId: string, onlyConnected: boolean = false): Promise<RepositoryResponse[]> {
+    const repoInclude = {
+      _count: { select: { commits: true } },
+      projectRepositories: { select: { projectId: true } },
+    };
+
     if (onlyConnected) {
       const dbRepos = await this.prisma.repository.findMany({
         where: { organizationId, isEnabled: true },
         orderBy: { name: 'asc' },
+        include: repoInclude,
       });
+      const projectScoreMap = await this.getProjectScoreMap(dbRepos);
       return dbRepos.map((repo) => ({
         id: repo.id,
         githubId: repo.githubId,
@@ -437,6 +482,8 @@ export class GitHubService {
         fullName: repo.fullName,
         isEnabled: repo.isEnabled,
         lastSyncAt: repo.lastSyncAt,
+        commitCount: repo._count?.commits ?? 0,
+        sqsScore: this.resolveSqsScore(repo.projectRepositories, projectScoreMap),
       }));
     }
 
@@ -447,7 +494,10 @@ export class GitHubService {
     if (!connection) {
       const dbRepos = await this.prisma.repository.findMany({
         where: { organizationId },
+        orderBy: { name: 'asc' },
+        include: repoInclude,
       });
+      const projectScoreMap = await this.getProjectScoreMap(dbRepos);
       return dbRepos.map((repo) => ({
         id: repo.id,
         githubId: repo.githubId,
@@ -455,6 +505,8 @@ export class GitHubService {
         fullName: repo.fullName,
         isEnabled: repo.isEnabled,
         lastSyncAt: repo.lastSyncAt,
+        commitCount: repo._count?.commits ?? 0,
+        sqsScore: this.resolveSqsScore(repo.projectRepositories, projectScoreMap),
       }));
     }
 
@@ -469,9 +521,11 @@ export class GitHubService {
 
       const existingRepos = await this.prisma.repository.findMany({
         where: { organizationId, githubId: { in: repos.map((r) => r.id) } },
+        include: repoInclude,
       });
 
       const existingRepoMap = new Map(existingRepos.map((r) => [r.githubId, r]));
+      const projectScoreMap = await this.getProjectScoreMap(existingRepos);
 
       return repos.map((repo) => {
         const existingRepo = existingRepoMap.get(repo.id);
@@ -482,13 +536,20 @@ export class GitHubService {
           fullName: repo.full_name,
           isEnabled: existingRepo?.isEnabled || false,
           lastSyncAt: existingRepo?.lastSyncAt || null,
+          commitCount: existingRepo?._count?.commits ?? 0,
+          sqsScore: existingRepo
+            ? this.resolveSqsScore(existingRepo.projectRepositories, projectScoreMap)
+            : undefined,
         };
       });
     } catch (error: any) {
       this.logger.warn(`Failed to fetch repositories from GitHub API: ${error?.message}`);
       const dbRepos = await this.prisma.repository.findMany({
         where: { organizationId },
+        orderBy: { name: 'asc' },
+        include: repoInclude,
       });
+      const projectScoreMap = await this.getProjectScoreMap(dbRepos);
       return dbRepos.map((repo) => ({
         id: repo.id,
         githubId: repo.githubId,
@@ -496,6 +557,8 @@ export class GitHubService {
         fullName: repo.fullName,
         isEnabled: repo.isEnabled,
         lastSyncAt: repo.lastSyncAt,
+        commitCount: repo._count?.commits ?? 0,
+        sqsScore: this.resolveSqsScore(repo.projectRepositories, projectScoreMap),
       }));
     }
   }
@@ -844,6 +907,8 @@ export class GitHubService {
     fullName: string;
     isEnabled: boolean;
     lastSyncAt: Date | null;
+    commitCount?: number;
+    sqsScore?: number;
   }): RepositoryResponse {
     return {
       id: repository.id,
@@ -852,6 +917,8 @@ export class GitHubService {
       fullName: repository.fullName,
       isEnabled: repository.isEnabled,
       lastSyncAt: repository.lastSyncAt,
+      commitCount: repository.commitCount ?? 0,
+      sqsScore: repository.sqsScore,
     };
   }
 

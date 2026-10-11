@@ -56,7 +56,13 @@ export const TrendChart = React.memo(function TrendChart({
           <Tooltip
             formatter={(value) => [value, valueLabel]}
             labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''}
-            contentStyle={{ borderRadius: 8, borderColor: '#cbd5e1' }}
+            contentStyle={{ 
+              backgroundColor: '#0f172a', 
+              borderColor: '#334155', 
+              borderRadius: 8, 
+              color: '#f8fafc' 
+            }}
+            labelStyle={{ color: '#cbd5e1', fontWeight: 600, marginBottom: '4px' }}
           />
           <Area
             type="monotone"

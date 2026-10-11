@@ -233,6 +233,8 @@ describe('GitHubService', () => {
         fullName: 'acme/api',
         isEnabled: true,
         lastSyncAt: null,
+        commitCount: 0,
+        sqsScore: undefined,
       },
       {
         id: '',
@@ -241,6 +243,8 @@ describe('GitHubService', () => {
         fullName: 'acme/web',
         isEnabled: false,
         lastSyncAt: null,
+        commitCount: 0,
+        sqsScore: undefined,
       },
     ]);
   });

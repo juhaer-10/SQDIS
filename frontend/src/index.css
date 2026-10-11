@@ -98,3 +98,27 @@
   }
 }
 
+/* Recharts tooltip contrast defaults */
+.recharts-default-tooltip {
+  border-radius: 8px !important;
+  font-size: 12px !important;
+}
+
+.recharts-tooltip-label {
+  color: #475569 !important;
+  font-weight: 600 !important;
+  margin-bottom: 4px !important;
+}
+
+.dark .recharts-default-tooltip {
+  background-color: #0f172a !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important;
+}
+
+.dark .recharts-tooltip-label {
+  color: #cbd5e1 !important;
+  font-weight: 600 !important;
+}
+
