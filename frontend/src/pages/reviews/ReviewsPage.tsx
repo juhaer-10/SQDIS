@@ -16,6 +16,7 @@ import { PageHeader, MetricTile, QueryState } from '../pageUtils'
 import { PrQualityGateBadge, PrQualityGateDrawer } from './components'
 import type { ReviewState, ReviewStateFilter, ReviewActivityTrendPoint, ReviewLeaderboardEntry } from '@/types'
 import type { TestImpactResult } from '@/services'
+import { useTheme } from '@/context/ThemeContext'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts'
 
 const mapToReviewStateFilter = (filter: string): ReviewStateFilter | undefined => {
@@ -41,6 +42,7 @@ const mapToReviewStateFilter = (filter: string): ReviewStateFilter | undefined =
 }
 
 export function ReviewsPage() {
+  const { isDarkMode } = useTheme()
   const [filterState, setFilterState] = useState<string>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(1)
@@ -315,7 +317,23 @@ export function ReviewsPage() {
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
                   <RechartsTooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    contentStyle={{
+                      backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
+                      borderColor: isDarkMode ? '#334155' : '#cbd5e1',
+                      borderRadius: '8px',
+                      color: isDarkMode ? '#f8fafc' : '#0f172a',
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+                      padding: '8px 12px',
+                    }}
+                    labelStyle={{
+                      color: isDarkMode ? '#cbd5e1' : '#475569',
+                      fontWeight: 600,
+                      marginBottom: '4px',
+                    }}
+                    itemStyle={{
+                      color: isDarkMode ? '#60a5fa' : '#2563eb',
+                      fontWeight: 500,
+                    }}
                   />
                   <Area type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorReviews)" />
                 </AreaChart>

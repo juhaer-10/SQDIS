@@ -74,12 +74,14 @@ export const BurndownChart = React.memo(function BurndownChart({
           <Tooltip
             labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate ?? ''}
             contentStyle={{
-              backgroundColor: 'rgba(255, 255, 255, 0.95)',
+              backgroundColor: '#0f172a',
               borderRadius: '8px',
-              border: '1px solid #e2e8f0',
-              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+              border: '1px solid #334155',
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.3)',
               fontSize: '12px',
+              color: '#f8fafc',
             }}
+            labelStyle={{ color: '#cbd5e1', fontWeight: 600, marginBottom: '4px' }}
           />
           <Legend
             verticalAlign="top"
