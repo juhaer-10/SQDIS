@@ -423,16 +423,19 @@ export class GitHubService {
   }
 
   private async getProjectScoreMap(
-    repos: Array<{ projectRepositories?: Array<{ projectId: string }> }>,
+    repos: Array<{ id: string; projectRepositories?: Array<{ projectId: string }> }>,
   ): Promise<Map<string, number>> {
     const projectScoreMap = new Map<string, number>();
-    const projectIds = repos
-      .flatMap((r) => r.projectRepositories?.map((pr) => pr.projectId) || [])
-      .filter(Boolean);
+    const entityIds = [
+      ...repos.map((r) => r.id),
+      ...repos
+        .flatMap((r) => r.projectRepositories?.map((pr) => pr.projectId) || [])
+        .filter(Boolean),
+    ];
 
-    if (projectIds.length > 0 && this.prisma.sQSScore?.findMany) {
+    if (entityIds.length > 0 && this.prisma.sQSScore?.findMany) {
       const latestScores = await this.prisma.sQSScore.findMany({
-        where: { projectId: { in: projectIds } },
+        where: { projectId: { in: entityIds } },
         orderBy: { calculatedAt: 'desc' },
       });
       for (const s of latestScores) {
@@ -446,9 +449,13 @@ export class GitHubService {
   }
 
   private resolveSqsScore(
+    repoId: string,
     projectRepositories: Array<{ projectId: string }> | undefined,
     projectScoreMap: Map<string, number>,
   ): number | undefined {
+    if (projectScoreMap.has(repoId)) {
+      return projectScoreMap.get(repoId);
+    }
     if (!projectRepositories) return undefined;
     for (const pr of projectRepositories) {
       if (projectScoreMap.has(pr.projectId)) {
@@ -483,7 +490,7 @@ export class GitHubService {
         isEnabled: repo.isEnabled,
         lastSyncAt: repo.lastSyncAt,
         commitCount: repo._count?.commits ?? 0,
-        sqsScore: this.resolveSqsScore(repo.projectRepositories, projectScoreMap),
+        sqsScore: this.resolveSqsScore(repo.id, repo.projectRepositories, projectScoreMap),
       }));
     }
 
@@ -506,7 +513,7 @@ export class GitHubService {
         isEnabled: repo.isEnabled,
         lastSyncAt: repo.lastSyncAt,
         commitCount: repo._count?.commits ?? 0,
-        sqsScore: this.resolveSqsScore(repo.projectRepositories, projectScoreMap),
+        sqsScore: this.resolveSqsScore(repo.id, repo.projectRepositories, projectScoreMap),
       }));
     }
 
@@ -538,7 +545,7 @@ export class GitHubService {
           lastSyncAt: existingRepo?.lastSyncAt || null,
           commitCount: existingRepo?._count?.commits ?? 0,
           sqsScore: existingRepo
-            ? this.resolveSqsScore(existingRepo.projectRepositories, projectScoreMap)
+            ? this.resolveSqsScore(existingRepo.id, existingRepo.projectRepositories, projectScoreMap)
             : undefined,
         };
       });
@@ -558,7 +565,7 @@ export class GitHubService {
         isEnabled: repo.isEnabled,
         lastSyncAt: repo.lastSyncAt,
         commitCount: repo._count?.commits ?? 0,
-        sqsScore: this.resolveSqsScore(repo.projectRepositories, projectScoreMap),
+        sqsScore: this.resolveSqsScore(repo.id, repo.projectRepositories, projectScoreMap),
       }));
     }
   }

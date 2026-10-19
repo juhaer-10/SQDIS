@@ -57,64 +57,90 @@ export class DashboardService {
           latestCoverages.length
         : 0;
 
-    // Get organization-wide SQS (combining projects and standalone scored repositories)
+    // Get organization-wide SQS (combining repositories and standalone projects)
     const projects = await this.prisma.project.findMany({
       where: { organizationId, isActive: true },
       select: { id: true },
     });
-
     const projectIds = projects.map((p) => p.id);
-    const candidateEntityIds = [...projectIds];
 
-    // Also include enabled repositories that are not linked to any project
-    const projectRepos = this.prisma.projectRepository?.findMany
-      ? await this.prisma.projectRepository.findMany({
-          where: { repository: { organizationId } },
-          select: { repositoryId: true },
-        })
-      : [];
-    const linkedRepoIds = new Set(projectRepos.map((pr) => pr.repositoryId));
-    const standaloneRepoIds = repoIds.filter((id) => !linkedRepoIds.has(id));
+    // Resolve SQS score for each repository using dual-resolution (repo SQS -> parent project SQS)
+    const repoScores = await Promise.all(
+      repoIds.map(async (repositoryId) => {
+        // 1. Direct repository SQS check
+        let scoreRecord = await this.prisma.sQSScore.findFirst({
+          where: { projectId: repositoryId },
+          orderBy: { calculatedAt: 'desc' },
+          select: { score: true },
+        });
 
-    candidateEntityIds.push(...standaloneRepoIds);
-
-    let avgSQS = 0;
-    if (candidateEntityIds.length > 0) {
-      const scores = await Promise.all(
-        candidateEntityIds.map(async (entityId) => {
-          let scoreRecord = await this.prisma.sQSScore.findFirst({
-            where: { projectId: entityId },
-            orderBy: { calculatedAt: 'desc' },
-            select: { score: true },
+        // 2. Fall back to parent project score if repo is linked to a project
+        if (!scoreRecord && this.prisma.projectRepository?.findFirst) {
+          const projectRepo = await this.prisma.projectRepository.findFirst({
+            where: { repositoryId },
+            select: { projectId: true },
           });
 
-          // If standalone repo has commits but no score yet, calculate on-demand
-          if (!scoreRecord && standaloneRepoIds.includes(entityId)) {
-            const commitCount = await this.prisma.commit.count({
-              where: { repositoryId: entityId },
+          if (projectRepo) {
+            scoreRecord = await this.prisma.sQSScore.findFirst({
+              where: { projectId: projectRepo.projectId },
+              orderBy: { calculatedAt: 'desc' },
+              select: { score: true },
             });
-            if (commitCount > 0) {
-              try {
-                const calculated = await this.scoresService.calculateSQS(entityId, organizationId);
-                if (calculated && typeof calculated.score === 'number') {
-                  scoreRecord = { score: calculated.score };
-                }
-              } catch (calcErr) {
-                this.logger.warn(`Failed on-demand SQS calculation for entity ${entityId}: ${calcErr}`);
+          }
+        }
+
+        // 3. On-demand calculation if repository has commits but no score yet
+        if (!scoreRecord) {
+          const commitCount = await this.prisma.commit.count({
+            where: { repositoryId },
+          });
+          if (commitCount > 0) {
+            try {
+              const calculated = await this.scoresService.calculateSQS(repositoryId, organizationId);
+              if (calculated && typeof calculated.score === 'number') {
+                scoreRecord = { score: calculated.score };
               }
+            } catch (calcErr) {
+              this.logger.warn(`Failed on-demand SQS calculation for repository ${repositoryId}: ${calcErr}`);
             }
           }
+        }
 
-          return scoreRecord;
-        }),
-      );
-      const entityScores = scores.filter((s) => s !== null && (s.score || 0) > 0);
+        return scoreRecord?.score ?? null;
+      }),
+    );
 
-      avgSQS =
-        entityScores.length > 0
-          ? entityScores.reduce((sum, s) => sum + (s?.score || 0), 0) / entityScores.length
-          : 0;
+    // Also include any standalone projects that have a direct SQS score but no linked repositories
+    let standaloneProjectIds = projectIds;
+    if (this.prisma.projectRepository?.findMany && projectIds.length > 0) {
+      const projectRepos = await this.prisma.projectRepository.findMany({
+        where: { projectId: { in: projectIds } },
+        select: { projectId: true },
+      });
+      const projectsWithRepos = new Set(projectRepos.map((pr) => pr.projectId));
+      standaloneProjectIds = projectIds.filter((id) => !projectsWithRepos.has(id));
     }
+
+    const projectScores = await Promise.all(
+      standaloneProjectIds.map(async (projectId) => {
+        const scoreRecord = await this.prisma.sQSScore.findFirst({
+          where: { projectId },
+          orderBy: { calculatedAt: 'desc' },
+          select: { score: true },
+        });
+        return scoreRecord?.score ?? null;
+      }),
+    );
+
+    const validScores = [...repoScores, ...projectScores].filter(
+      (s): s is number => s !== null && s > 0,
+    );
+
+    const avgSQS =
+      validScores.length > 0
+        ? validScores.reduce((sum, score) => sum + score, 0) / validScores.length
+        : 0;
 
     // Get risky modules count from alerts
     const riskyModulesCount = await this.prisma.alert.count({
@@ -145,18 +171,29 @@ export class DashboardService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const projects = await this.prisma.project.findMany({
-      where: { organizationId, isActive: true },
-      select: { id: true },
-    });
+    const [projects, repos] = await Promise.all([
+      this.prisma.project.findMany({
+        where: { organizationId, isActive: true },
+        select: { id: true },
+      }),
+      this.prisma.repository.findMany({
+        where: { organizationId, isEnabled: true },
+        select: { id: true },
+      }),
+    ]);
 
-    const projectIds = projects.map((p) => p.id);
+    const allEntityIds = Array.from(
+      new Set([
+        ...(projects || []).map((p) => p.id),
+        ...(repos || []).map((r) => r.id),
+      ]),
+    );
 
-    if (projectIds.length === 0) return [];
+    if (allEntityIds.length === 0) return [];
 
     const scores = await this.prisma.sQSScore.findMany({
       where: {
-        projectId: { in: projectIds },
+        projectId: { in: allEntityIds },
         calculatedAt: { gte: startDate },
       },
       orderBy: { calculatedAt: 'asc' },
@@ -588,16 +625,22 @@ export class DashboardService {
       take: 10,
     });
 
-    // Get projects with low SQS
-    const projects = await this.prisma.project.findMany({
-      where: { organizationId, isActive: true },
-      select: { id: true, name: true },
-    });
+    // Get projects and repositories with low SQS
+    const [projects, repos] = await Promise.all([
+      this.prisma.project.findMany({
+        where: { organizationId, isActive: true },
+        select: { id: true, name: true },
+      }),
+      this.prisma.repository.findMany({
+        where: { organizationId, isEnabled: true },
+        select: { id: true, name: true },
+      }),
+    ]);
 
-    const lowScoreProjects: Array<{ id: string; name: string; score: number; calculatedAt: Date }> =
+    const lowScoreEntities: Array<{ id: string; name: string; score: number; calculatedAt: Date }> =
       [];
 
-    for (const project of projects) {
+    for (const project of projects || []) {
       const latestScore = await this.prisma.sQSScore.findFirst({
         where: { projectId: project.id },
         orderBy: { calculatedAt: 'desc' },
@@ -605,9 +648,26 @@ export class DashboardService {
       });
 
       if (latestScore && latestScore.score < 50) {
-        lowScoreProjects.push({
+        lowScoreEntities.push({
           id: latestScore.id,
           name: project.name,
+          score: latestScore.score,
+          calculatedAt: latestScore.calculatedAt,
+        });
+      }
+    }
+
+    for (const repo of repos || []) {
+      const latestScore = await this.prisma.sQSScore.findFirst({
+        where: { projectId: repo.id },
+        orderBy: { calculatedAt: 'desc' },
+        select: { id: true, score: true, calculatedAt: true },
+      });
+
+      if (latestScore && latestScore.score < 50) {
+        lowScoreEntities.push({
+          id: latestScore.id,
+          name: repo.name,
           score: latestScore.score,
           calculatedAt: latestScore.calculatedAt,
         });
@@ -626,7 +686,7 @@ export class DashboardService {
         description: a.message,
         timestamp: a.createdAt,
       })),
-      ...lowScoreProjects.slice(0, 5).map((s) => ({
+      ...lowScoreEntities.slice(0, 5).map((s) => ({
         id: s.id,
         type: 'low_score' as const,
         severity: 'warning' as const,

@@ -367,21 +367,36 @@ export class ProjectsService {
     }
 
     // 2. Fetch latest SQS Score and Trend
-    // Assuming SQSScore is linked to projectId (if not, we might need to change schema or logic)
-    // Based on schema comments: "References repository ID for now" - checking actual usage.
-    // If it relies on project ID, we query by projectId.
-    const latestSQS = await this.prisma.sQSScore.findFirst({
+    // Check direct project SQS, or fall back to scores from the project's repositories
+    let latestSQS = await this.prisma.sQSScore.findFirst({
       where: { projectId: id },
       orderBy: { calculatedAt: 'desc' },
     });
 
-    const previousSQS = await this.prisma.sQSScore.findFirst({
+    if (!latestSQS && repoIds.length > 0) {
+      latestSQS = await this.prisma.sQSScore.findFirst({
+        where: { projectId: { in: repoIds } },
+        orderBy: { calculatedAt: 'desc' },
+      });
+    }
+
+    let previousSQS = await this.prisma.sQSScore.findFirst({
       where: {
         projectId: id,
         id: { not: latestSQS?.id || '' }, // Exclude the latest one
       },
       orderBy: { calculatedAt: 'desc' },
     });
+
+    if (!previousSQS && repoIds.length > 0) {
+      previousSQS = await this.prisma.sQSScore.findFirst({
+        where: {
+          projectId: { in: repoIds },
+          id: { not: latestSQS?.id || '' },
+        },
+        orderBy: { calculatedAt: 'desc' },
+      });
+    }
 
     const sqs = latestSQS?.score || 0;
     const previousScore = previousSQS?.score || 0;
