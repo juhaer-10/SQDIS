@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, UserPlus, Shield, Trash2, Award, Users, Activity, Settings, GitCommit, Search, Plus, AlertTriangle, Sparkles } from 'lucide-react'
+import { ArrowLeft, UserPlus, Shield, Trash2, Award, Users, Activity, Settings, GitCommit, Search, Plus, AlertTriangle, Sparkles, Layers } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -128,6 +128,7 @@ export function TeamDetailPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.teams.detail(id!) })
       queryClient.invalidateQueries({ queryKey: queryKeys.teams.all() })
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.all() })
+      queryClient.invalidateQueries({ queryKey: ['team-bus-factor', id] })
     },
     onError: (err: any) => {
       setProjectActionError(
@@ -151,6 +152,7 @@ export function TeamDetailPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.teams.detail(id!) })
       queryClient.invalidateQueries({ queryKey: queryKeys.teams.all() })
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.all() })
+      queryClient.invalidateQueries({ queryKey: ['team-bus-factor', id] })
     },
     onError: (err: any) => {
       setProjectActionError(
@@ -300,7 +302,7 @@ export function TeamDetailPage() {
                     <CardTitle className="flex items-center gap-2">
                       <Shield className="h-5 w-5 text-indigo-500" /> Knowledge Silos & Bus Factor Radar
                     </CardTitle>
-                    {busFactorData && (
+                    {busFactorData && busFactorData.has_assigned_projects !== false && (busFactorData.total_modules_analyzed ?? 0) > 0 && (
                       <span
                         className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold border"
                         style={{
@@ -332,25 +334,42 @@ export function TeamDetailPage() {
                       <div className="py-8 text-center text-xs text-slate-500">
                         Calculating team bus factor and authorship distribution...
                       </div>
-                    ) : busFactorData ? (
+                    ) : !busFactorData || busFactorData.has_assigned_projects === false || (team?.projects?.length ?? 0) === 0 ? (
+                      <EmptyState
+                        icon={<Layers className="h-7 w-7 text-indigo-500" />}
+                        title="No Projects Assigned"
+                        description="Assign a project to this team to evaluate code ownership, file hotspots, and bus factor."
+                        action={
+                          <Button variant="outline" size="sm" onClick={() => setIsProjectModalOpen(true)}>
+                            <Plus className="mr-1.5 h-3.5 w-3.5" /> Assign Project
+                          </Button>
+                        }
+                      />
+                    ) : (busFactorData.total_modules_analyzed ?? 0) === 0 ? (
+                      <EmptyState
+                        icon={<GitCommit className="h-7 w-7 text-slate-400" />}
+                        title="No Commit Activity"
+                        description="No commit activity found for this team's assigned projects yet."
+                      />
+                    ) : (
                       <>
                         <div className="grid grid-cols-3 gap-3 rounded-lg bg-slate-50 p-3 text-center dark:bg-slate-900/60">
                           <div>
                             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Bus Factor</span>
                             <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-slate-100">
-                              {(busFactorData.overall_bus_factor ?? 0).toFixed(1)}
+                              {(busFactorData?.overall_bus_factor ?? 0).toFixed(1)}
                             </p>
                           </div>
                           <div>
                             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Gini Inequality</span>
                             <p className="mt-0.5 text-lg font-bold text-amber-600 dark:text-amber-500">
-                              {(busFactorData.average_gini ?? 0).toFixed(2)}
+                              {(busFactorData?.average_gini ?? 0).toFixed(2)}
                             </p>
                           </div>
                           <div>
                             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Critical Silos</span>
                             <p className="mt-0.5 text-lg font-bold text-rose-600 dark:text-rose-500">
-                              {busFactorData.critical_silos_count ?? 0}
+                              {busFactorData?.critical_silos_count ?? 0}
                             </p>
                           </div>
                         </div>
@@ -394,10 +413,6 @@ export function TeamDetailPage() {
                           </div>
                         )}
                       </>
-                    ) : (
-                      <div className="py-6 text-center text-slate-500 text-xs">
-                        No commit activity mapped to this team's members yet to evaluate knowledge distribution.
-                      </div>
                     )}
                   </CardContent>
                 </Card>
