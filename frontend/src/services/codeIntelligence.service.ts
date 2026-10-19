@@ -94,13 +94,15 @@ export interface TeamBusFactorResponse {
   snapshotId?: string;
   teamId?: string;
   teamName?: string;
-  repository_name: string;
+  repository_name?: string;
   overall_bus_factor: number;
   average_gini: number;
   total_modules_analyzed: number;
   critical_silos_count: number;
   vulnerable_count: number;
   resilient_count: number;
+  has_assigned_projects?: boolean;
+  message?: string;
   module_results: ModuleBusFactorResult[];
   createdAt?: string;
 }

@@ -57,30 +57,62 @@ export class DashboardService {
           latestCoverages.length
         : 0;
 
-    // Get organization-wide SQS (average of all projects)
+    // Get organization-wide SQS (combining projects and standalone scored repositories)
     const projects = await this.prisma.project.findMany({
       where: { organizationId, isActive: true },
       select: { id: true },
     });
 
     const projectIds = projects.map((p) => p.id);
+    const candidateEntityIds = [...projectIds];
+
+    // Also include enabled repositories that are not linked to any project
+    const projectRepos = this.prisma.projectRepository?.findMany
+      ? await this.prisma.projectRepository.findMany({
+          where: { repository: { organizationId } },
+          select: { repositoryId: true },
+        })
+      : [];
+    const linkedRepoIds = new Set(projectRepos.map((pr) => pr.repositoryId));
+    const standaloneRepoIds = repoIds.filter((id) => !linkedRepoIds.has(id));
+
+    candidateEntityIds.push(...standaloneRepoIds);
 
     let avgSQS = 0;
-    if (projectIds.length > 0) {
+    if (candidateEntityIds.length > 0) {
       const scores = await Promise.all(
-        projectIds.map(async (projectId) => {
-          return this.prisma.sQSScore.findFirst({
-            where: { projectId },
+        candidateEntityIds.map(async (entityId) => {
+          let scoreRecord = await this.prisma.sQSScore.findFirst({
+            where: { projectId: entityId },
             orderBy: { calculatedAt: 'desc' },
             select: { score: true },
           });
-        })
+
+          // If standalone repo has commits but no score yet, calculate on-demand
+          if (!scoreRecord && standaloneRepoIds.includes(entityId)) {
+            const commitCount = await this.prisma.commit.count({
+              where: { repositoryId: entityId },
+            });
+            if (commitCount > 0) {
+              try {
+                const calculated = await this.scoresService.calculateSQS(entityId, organizationId);
+                if (calculated && typeof calculated.score === 'number') {
+                  scoreRecord = { score: calculated.score };
+                }
+              } catch (calcErr) {
+                this.logger.warn(`Failed on-demand SQS calculation for entity ${entityId}: ${calcErr}`);
+              }
+            }
+          }
+
+          return scoreRecord;
+        }),
       );
-      const projectScores = scores.filter((s) => s !== null);
+      const entityScores = scores.filter((s) => s !== null && (s.score || 0) > 0);
 
       avgSQS =
-        projectScores.length > 0
-          ? projectScores.reduce((sum, s) => sum + (s.score || 0), 0) / projectScores.length
+        entityScores.length > 0
+          ? entityScores.reduce((sum, s) => sum + (s?.score || 0), 0) / entityScores.length
           : 0;
     }
 
@@ -197,20 +229,41 @@ export class DashboardService {
     // Get latest coverage and SQS for each repo
     const repoScores = await Promise.all(
       repos.map(async (repo) => {
-        // Get SQS from projects that include this repo
-        const projectRepo = await this.prisma.projectRepository.findFirst({
-          where: { repositoryId: repo.id },
-          select: { projectId: true },
+        // 1. Direct repository SQS check
+        let latestScore = await this.prisma.sQSScore.findFirst({
+          where: { projectId: repo.id },
+          orderBy: { calculatedAt: 'desc' },
+          select: { score: true },
         });
 
-        let sqs = 0;
-        if (projectRepo) {
-          const latestScore = await this.prisma.sQSScore.findFirst({
-            where: { projectId: projectRepo.projectId },
-            orderBy: { calculatedAt: 'desc' },
-            select: { score: true },
+        // 2. Fall back to parent project score if repo is linked to a project
+        if (!latestScore) {
+          const projectRepo = await this.prisma.projectRepository.findFirst({
+            where: { repositoryId: repo.id },
+            select: { projectId: true },
           });
-          sqs = latestScore?.score || 0;
+
+          if (projectRepo) {
+            latestScore = await this.prisma.sQSScore.findFirst({
+              where: { projectId: projectRepo.projectId },
+              orderBy: { calculatedAt: 'desc' },
+              select: { score: true },
+            });
+          }
+        }
+
+        let sqs = latestScore?.score || 0;
+
+        // 3. On-demand calculation if repository has commits but no score yet
+        if (sqs === 0 && repo._count.commits > 0) {
+          try {
+            const calculated = await this.scoresService.calculateSQS(repo.id, organizationId);
+            if (calculated && typeof calculated.score === 'number') {
+              sqs = calculated.score;
+            }
+          } catch (calcErr) {
+            this.logger.warn(`Failed on-demand SQS calculation for repository ${repo.id}: ${calcErr}`);
+          }
         }
 
         const latestCoverage = await this.prisma.coverageReport.findFirst({

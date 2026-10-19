@@ -38,6 +38,7 @@ describe('DashboardService', () => {
       },
       projectRepository: {
         findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       commit: {
         count: jest.fn(),

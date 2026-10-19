@@ -299,7 +299,7 @@ export class ScoresService {
       return cached;
     }
 
-    // For now, we use repository as project
+    // Verify project or repository exists in organization
     const repository = await this.prisma.repository.findFirst({
       where: {
         id: projectId,
@@ -307,8 +307,17 @@ export class ScoresService {
       },
     });
 
-    if (!repository) {
-      throw new NotFoundException(`Project with ID ${projectId} not found in organization`);
+    const project = !repository
+      ? await this.prisma.project.findFirst({
+          where: {
+            id: projectId,
+            organizationId,
+          },
+        })
+      : null;
+
+    if (!repository && !project) {
+      throw new NotFoundException(`Project or Repository with ID ${projectId} not found in organization`);
     }
 
     // Get latest SQS score from database
@@ -373,7 +382,7 @@ export class ScoresService {
       return cached;
     }
 
-    // Verify project exists and belongs to organization
+    // Verify project or repository exists in organization
     const repository = await this.prisma.repository.findFirst({
       where: {
         id: projectId,
@@ -381,8 +390,17 @@ export class ScoresService {
       },
     });
 
-    if (!repository) {
-      throw new NotFoundException(`Project with ID ${projectId} not found in organization`);
+    const project = !repository
+      ? await this.prisma.project.findFirst({
+          where: {
+            id: projectId,
+            organizationId,
+          },
+        })
+      : null;
+
+    if (!repository && !project) {
+      throw new NotFoundException(`Project or Repository with ID ${projectId} not found in organization`);
     }
 
     const where: any = { projectId };

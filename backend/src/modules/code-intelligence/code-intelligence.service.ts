@@ -298,9 +298,26 @@ export class CodeIntelligenceService {
       });
     });
 
-    // Query commits for these repositories
+    // If no projects or repositories are associated with this team, return empty state immediately
+    if (repoIds.length === 0) {
+      return {
+        teamId: team.id,
+        teamName: team.name,
+        overall_bus_factor: 0,
+        average_gini: 0,
+        total_modules_analyzed: 0,
+        critical_silos_count: 0,
+        vulnerable_count: 0,
+        resilient_count: 0,
+        has_assigned_projects: false,
+        module_results: [],
+        message: 'No projects assigned to this team yet. Assign a project to evaluate code ownership and bus factor.',
+      };
+    }
+
+    // Query commits strictly for these assigned repositories
     const commits = await this.prisma.commit.findMany({
-      where: repoIds.length > 0 ? { repositoryId: { in: repoIds } } : {},
+      where: { repositoryId: { in: repoIds } },
       take: 200,
       orderBy: { committedAt: 'desc' },
       include: {
@@ -335,41 +352,25 @@ export class CodeIntelligenceService {
       }
     }
 
-    // If no commits in DB, synthesize baseline from team members for immediate testability
-    const modulesPayload: any[] = [];
+    // If no commits in DB for assigned repositories, return empty state without hardcoded dummy data
     if (moduleMap.size === 0) {
-      const members = team.memberships && team.memberships.length > 0
-        ? team.memberships.map((m: any) => ({ id: m.userId, name: m.user?.name || 'Developer' }))
-        : [
-            { id: 'lead', name: 'Tech Lead' },
-            { id: 'dev1', name: 'Developer 1' },
-            { id: 'dev2', name: 'Developer 2' },
-          ];
+      return {
+        teamId: team.id,
+        teamName: team.name,
+        overall_bus_factor: 0,
+        average_gini: 0,
+        total_modules_analyzed: 0,
+        critical_silos_count: 0,
+        vulnerable_count: 0,
+        resilient_count: 0,
+        has_assigned_projects: true,
+        module_results: [],
+        message: 'No commit activity mapped to this team assigned projects yet.',
+      };
+    }
 
-      modulesPayload.push(
-        {
-          module_name: 'src/core',
-          authors: members.map((m: any, idx: number) => ({
-            developer_id: m.id,
-            author_name: m.name,
-            commit_count: idx === 0 ? 65 : 12,
-            lines_added: idx === 0 ? 3200 : 400,
-            lines_deleted: idx === 0 ? 400 : 80,
-          })),
-        },
-        {
-          module_name: 'src/api',
-          authors: members.map((m: any) => ({
-            developer_id: m.id,
-            author_name: m.name,
-            commit_count: 20,
-            lines_added: 800,
-            lines_deleted: 150,
-          })),
-        },
-      );
-    } else {
-      for (const [modName, authors] of moduleMap.entries()) {
+    const modulesPayload: any[] = [];
+    for (const [modName, authors] of moduleMap.entries()) {
         modulesPayload.push({
           module_name: modName,
           authors: Array.from(authors.entries()).map(([devId, stats]) => ({
@@ -380,7 +381,6 @@ export class CodeIntelligenceService {
             lines_deleted: stats.deleted,
           })),
         });
-      }
     }
 
     // Call ML service bus factor engine
