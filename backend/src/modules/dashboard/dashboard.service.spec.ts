@@ -16,6 +16,8 @@ describe('DashboardService', () => {
     sQSScore: Record<string, jest.Mock>;
     dQSScore: Record<string, jest.Mock>;
     alert: Record<string, jest.Mock>;
+    debtItem: Record<string, jest.Mock>;
+    release: Record<string, jest.Mock>;
     user: Record<string, jest.Mock>;
     teamMembership: Record<string, jest.Mock>;
   };
@@ -42,7 +44,7 @@ describe('DashboardService', () => {
       },
       commit: {
         count: jest.fn(),
-        findMany: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       organizationMember: {
         count: jest.fn(),
@@ -60,7 +62,13 @@ describe('DashboardService', () => {
       },
       alert: {
         count: jest.fn(),
-        findMany: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      debtItem: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      release: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
       user: {
         findMany: jest.fn(),

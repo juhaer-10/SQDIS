@@ -439,7 +439,7 @@ export class DashboardService {
     const auxiliaryQuota = filterType ? fetchLimit : Math.min(fetchLimit, 5);
 
     const [commits, alerts, debtItems, releases] = await Promise.all([
-      shouldFetchCommits
+      shouldFetchCommits && this.prisma.commit?.findMany
         ? this.prisma.commit.findMany({
             where: { repository: { organizationId } },
             orderBy: { committedAt: 'desc' },
@@ -449,15 +449,15 @@ export class DashboardService {
               repository: { select: { id: true, name: true } },
             },
           })
-        : [],
-      shouldFetchAlerts
+        : Promise.resolve([]),
+      shouldFetchAlerts && this.prisma.alert?.findMany
         ? this.prisma.alert.findMany({
             where: { organizationId },
             orderBy: { createdAt: 'desc' },
             take: auxiliaryQuota,
           })
-        : [],
-      shouldFetchDebt
+        : Promise.resolve([]),
+      shouldFetchDebt && this.prisma.debtItem?.findMany
         ? this.prisma.debtItem.findMany({
             where: { repository: { organizationId } },
             orderBy: { createdAt: 'desc' },
@@ -467,14 +467,14 @@ export class DashboardService {
               author: { select: { id: true, name: true } },
             },
           })
-        : [],
-      shouldFetchReleases
+        : Promise.resolve([]),
+      shouldFetchReleases && this.prisma.release?.findMany
         ? this.prisma.release.findMany({
             where: { organizationId },
             orderBy: { createdAt: 'desc' },
             take: auxiliaryQuota,
           })
-        : [],
+        : Promise.resolve([]),
     ]);
 
     const activities: any[] = [];
