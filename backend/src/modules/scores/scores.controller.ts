@@ -120,6 +120,20 @@ export class ScoresController {
   }
 
   /**
+   * Get direct SQS score for a repository
+   */
+  @Get('sqs/repository/:repositoryId')
+  @ApiOperation({ summary: 'Get direct SQS score for a repository' })
+  @ApiParam({ name: 'repositoryId', description: 'Repository ID' })
+  @ApiResponse({ status: 200, description: 'Repository SQS details retrieved.' })
+  async getRepositorySQS(
+    @Param('repositoryId', ParseUUIDPipe) repositoryId: string,
+    @GetOrganization() organizationId: string,
+  ) {
+    return this.scoresService.getSQS(repositoryId, organizationId);
+  }
+
+  /**
    * Get project SQS history
    */
   @Get('sqs/:projectId/history')
