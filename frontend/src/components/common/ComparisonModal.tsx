@@ -102,6 +102,7 @@ export function ComparisonModal({
                 <XAxis dataKey="metric" stroke="#94a3b8" fontSize={12} tickLine={false} />
                 <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} />
                 <Tooltip
+                  cursor={false}
                   contentStyle={{
                     backgroundColor: '#0f172a',
                     border: '1px solid #334155',

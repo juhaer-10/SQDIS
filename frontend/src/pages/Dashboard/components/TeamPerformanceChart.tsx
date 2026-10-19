@@ -61,21 +61,23 @@ export default function TeamPerformanceChart() {
             margin={{ left: 24, right: 24, top: 8, bottom: 8 }}
           >
             <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-            <XAxis domain={[0, 100]} type="number" tick={{ fontSize: 11 }} />
+            <XAxis domain={[0, 100]} type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} stroke="#94a3b8" />
             <YAxis
               type="category"
               dataKey="name"
               width={110}
-              tick={{ fontSize: 11 }}
+              tick={{ fontSize: 11, fill: '#94a3b8' }}
+              stroke="#94a3b8"
             />
             <Tooltip
+              cursor={false}
               formatter={(value) => {
                 const v = typeof value === 'number' ? value.toFixed(1) : String(value)
                 return [v, 'Avg DQS']
               }}
-              contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', borderRadius: '8px', border: 'none', color: '#fff' }}
+              contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', borderRadius: '8px', border: '1px solid #334155', color: '#fff' }}
             />
-            <Bar dataKey="avgDqs" radius={[0, 4, 4, 0]}>
+            <Bar dataKey="avgDqs" radius={[0, 4, 4, 0]} maxBarSize={36}>
               {data.map((entry) => (
                 <Cell key={entry.id} fill={toneForScore(entry.avgDqs || 0)} />
               ))}
@@ -86,7 +88,7 @@ export default function TeamPerformanceChart() {
                   if (typeof value === 'number') return value.toFixed(1)
                   return '0'
                 }}
-                style={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                style={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
               />
             </Bar>
           </BarChart>
