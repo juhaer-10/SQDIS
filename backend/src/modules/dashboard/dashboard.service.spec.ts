@@ -26,7 +26,7 @@ describe('DashboardService', () => {
     prisma = {
       repository: {
         count: jest.fn(),
-        findMany: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       team: {
         count: jest.fn(),
@@ -129,15 +129,17 @@ describe('DashboardService', () => {
   });
 
   describe('getSQSTrend', () => {
-    it('returns an empty SQS trend when the organization has no projects', async () => {
+    it('returns an empty SQS trend when the organization has no projects or repositories', async () => {
       prisma.project.findMany.mockResolvedValue([]);
+      prisma.repository.findMany.mockResolvedValue([]);
 
       await expect(service.getSQSTrend('org-1', 30)).resolves.toEqual([]);
       expect(prisma.sQSScore.findMany).not.toHaveBeenCalled();
     });
 
-    it('aggregates daily SQS score averages for active projects', async () => {
-      prisma.project.findMany.mockResolvedValue([{ id: 'p-1' }, { id: 'p-2' }]);
+    it('aggregates daily SQS score averages for active projects and repositories', async () => {
+      prisma.project.findMany.mockResolvedValue([{ id: 'p-1' }]);
+      prisma.repository.findMany.mockResolvedValue([{ id: 'repo-1' }]);
       prisma.sQSScore.findMany.mockResolvedValue([
         { score: 80, calculatedAt: new Date('2026-01-01T10:00:00.000Z') },
         { score: 90, calculatedAt: new Date('2026-01-01T15:00:00.000Z') },
@@ -150,6 +152,17 @@ describe('DashboardService', () => {
         { date: '2026-01-01', value: 85 },
         { date: '2026-01-02', value: 85 },
       ]);
+      expect(prisma.sQSScore.findMany).toHaveBeenCalledWith({
+        where: {
+          projectId: { in: ['p-1', 'repo-1'] },
+          calculatedAt: { gte: expect.any(Date) },
+        },
+        orderBy: { calculatedAt: 'asc' },
+        select: {
+          score: true,
+          calculatedAt: true,
+        },
+      });
     });
   });
 
