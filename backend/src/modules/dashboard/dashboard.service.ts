@@ -424,29 +424,154 @@ export class DashboardService {
   }
 
   /**
-   * Get recent activity
+   * Get unified engineering recent activity across commits, alerts, debt items, and releases
    */
-  async getRecentActivity(organizationId: string, limit: number = 10) {
-    const recentCommits = await this.prisma.commit.findMany({
-      where: { repository: { organizationId } },
-      orderBy: { committedAt: 'desc' },
-      take: limit,
-      include: {
-        developer: { select: { id: true, name: true, avatarUrl: true } },
-        repository: { select: { id: true, name: true } },
-      },
-    });
+  async getRecentActivity(organizationId: string, limit: number = 15, type?: string) {
+    const fetchLimit = Math.min(Math.max(limit, 5), 50);
+    const filterType = type?.toLowerCase();
 
-    return recentCommits.map((c) => ({
-      id: c.id,
-      type: 'commit',
-      message: c.message,
-      author: c.developer?.name || c.authorName,
-      authorAvatar: c.developer?.avatarUrl,
-      repository: c.repository.name,
-      classification: c.classification,
-      timestamp: c.committedAt,
-    }));
+    const shouldFetchCommits = !filterType || filterType === 'all' || filterType === 'commit';
+    const shouldFetchAlerts = !filterType || filterType === 'all' || filterType === 'alert';
+    const shouldFetchDebt = !filterType || filterType === 'all' || filterType === 'debt';
+    const shouldFetchReleases = !filterType || filterType === 'all' || filterType === 'release';
+
+    const commitQuota = filterType === 'commit' ? fetchLimit : Math.max(fetchLimit - 5, 10);
+    const auxiliaryQuota = filterType ? fetchLimit : Math.min(fetchLimit, 5);
+
+    const [commits, alerts, debtItems, releases] = await Promise.all([
+      shouldFetchCommits
+        ? this.prisma.commit.findMany({
+            where: { repository: { organizationId } },
+            orderBy: { committedAt: 'desc' },
+            take: commitQuota,
+            include: {
+              developer: { select: { id: true, name: true, avatarUrl: true } },
+              repository: { select: { id: true, name: true } },
+            },
+          })
+        : [],
+      shouldFetchAlerts
+        ? this.prisma.alert.findMany({
+            where: { organizationId },
+            orderBy: { createdAt: 'desc' },
+            take: auxiliaryQuota,
+          })
+        : [],
+      shouldFetchDebt
+        ? this.prisma.debtItem.findMany({
+            where: { repository: { organizationId } },
+            orderBy: { createdAt: 'desc' },
+            take: auxiliaryQuota,
+            include: {
+              repository: { select: { id: true, name: true } },
+              author: { select: { id: true, name: true } },
+            },
+          })
+        : [],
+      shouldFetchReleases
+        ? this.prisma.release.findMany({
+            where: { organizationId },
+            orderBy: { createdAt: 'desc' },
+            take: auxiliaryQuota,
+          })
+        : [],
+    ]);
+
+    const activities: any[] = [];
+
+    // 1. Commits
+    for (const c of commits) {
+      const firstLine = (c.message || '').split('\n')[0].trim() || 'Commit updated';
+      activities.push({
+        id: c.id,
+        type: 'commit',
+        title: firstLine,
+        description: c.message,
+        message: c.message,
+        repository: c.repository?.name || 'Repository',
+        repositoryName: c.repository?.name || 'Repository',
+        author: c.developer?.name || c.authorName || 'Contributor',
+        authorAvatar: c.developer?.avatarUrl,
+        timestamp: c.committedAt,
+        metadata: {
+          sha: c.sha,
+          shortSha: c.sha ? c.sha.slice(0, 7) : undefined,
+          classification: c.classification,
+          linesAdded: c.linesAdded,
+          linesDeleted: c.linesDeleted,
+          filesChanged: c.filesChanged,
+          anomalyFlag: c.anomalyFlag,
+        },
+      });
+    }
+
+    // 2. Quality Alerts
+    for (const a of alerts) {
+      activities.push({
+        id: a.id,
+        type: 'alert',
+        title: a.message || 'Quality Gate Alert Triggered',
+        description: `Severity: ${a.severity} · Status: ${a.status}`,
+        message: a.message,
+        repository: 'Quality Policy',
+        repositoryName: 'Quality Policy',
+        author: 'System Quality Gate',
+        timestamp: a.createdAt,
+        metadata: {
+          severity: a.severity,
+          status: a.status,
+          alertType: a.type,
+        },
+      });
+    }
+
+    // 3. Technical Debt
+    for (const d of debtItems) {
+      activities.push({
+        id: d.id,
+        type: 'debt',
+        title: `${d.markerType} Marker: ${d.content || 'Code debt detected'}`,
+        description: `${d.filePath}:${d.lineNumber}`,
+        message: d.content,
+        repository: d.repository?.name || 'Repository',
+        repositoryName: d.repository?.name || 'Repository',
+        author: d.author?.name || 'Scanner',
+        timestamp: d.createdAt,
+        metadata: {
+          markerType: d.markerType,
+          isResolved: d.isResolved,
+          filePath: d.filePath,
+          lineNumber: d.lineNumber,
+        },
+      });
+    }
+
+    // 4. Releases
+    for (const r of releases) {
+      activities.push({
+        id: r.id,
+        type: 'release',
+        title: `Release ${r.version} Deployed`,
+        description: r.description || `Target Date: ${new Date(r.targetDate).toLocaleDateString()}`,
+        message: r.description || `Release ${r.version}`,
+        repository: 'Deployment Pipeline',
+        repositoryName: 'Deployment Pipeline',
+        author: 'Release Manager',
+        timestamp: r.shippedAt || r.createdAt,
+        metadata: {
+          version: r.version,
+          isRolledBack: r.isRolledBack,
+          isActive: r.isActive,
+        },
+      });
+    }
+
+    // Sort chronologically descending
+    activities.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+
+    return activities.slice(0, limit);
   }
 
   /**
