@@ -252,15 +252,36 @@ export interface RecentActivity {
   id: string;
   type: string;
   title?: string;
-  description: string;
+  description?: string;
+  message?: string;
+  repository?: string;
   repositoryName?: string;
   author?: string;
+  authorAvatar?: string;
   user?: {
     id: string;
     name: string;
     avatarUrl?: string;
   };
   timestamp: string;
+  metadata?: {
+    sha?: string;
+    shortSha?: string;
+    classification?: string;
+    linesAdded?: number;
+    linesDeleted?: number;
+    filesChanged?: number;
+    anomalyFlag?: boolean;
+    severity?: string;
+    status?: string;
+    alertType?: string;
+    tagName?: string;
+    markerType?: string;
+    isResolved?: boolean;
+    filePath?: string;
+    lineNumber?: number;
+    version?: string;
+  };
 }
 
 export interface DashboardAlert {

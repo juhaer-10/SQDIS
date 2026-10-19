@@ -80,11 +80,11 @@ export const dashboardService = {
   },
 
   /**
-   * Get recent repository activity
+   * Get recent engineering activity
    */
-  async getRecentActivity(limit?: number): Promise<RecentActivity[]> {
+  async getRecentActivity(limit?: number, type?: string): Promise<RecentActivity[]> {
     const response = await api.get<RecentActivity[]>('/dashboard/recent-activity', {
-      params: { limit },
+      params: { limit, type },
     });
     return response.data;
   },
