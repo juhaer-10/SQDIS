@@ -11,18 +11,40 @@ import {
   ReferenceLine
 } from 'recharts'
 
-interface ShapAttributionChartProps {
-  shapValues: Record<string, number>
+export interface ShapAttributionItem {
+  feature: string
+  impact?: number
+  value?: number
+}
+
+export interface ShapAttributionChartProps {
+  shapValues?: Record<string, number> | ShapAttributionItem[] | null
 }
 
 export function ShapAttributionChart({ shapValues }: ShapAttributionChartProps) {
   const data = useMemo(() => {
-    return Object.entries(shapValues)
-      .map(([feature, value]) => ({
-        feature: feature.replace(/_/g, ' '),
-        value,
-      }))
-      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+    if (!shapValues) return []
+
+    if (Array.isArray(shapValues)) {
+      return shapValues
+        .filter((item) => item && typeof item.feature === 'string')
+        .map((item) => ({
+          feature: item.feature.replace(/_/g, ' '),
+          value: typeof item.impact === 'number' ? item.impact : (typeof item.value === 'number' ? item.value : 0),
+        }))
+        .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+    }
+
+    if (typeof shapValues === 'object') {
+      return Object.entries(shapValues)
+        .map(([feature, val]) => ({
+          feature: feature.replace(/_/g, ' '),
+          value: typeof val === 'number' ? val : 0,
+        }))
+        .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+    }
+
+    return []
   }, [shapValues])
 
   if (!data || data.length === 0) {
