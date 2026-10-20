@@ -847,8 +847,9 @@ export class CommitsService {
       };
     }
 
-    if (developerId) {
-      where.developerId = developerId;
+    const effectiveDeveloperId = developerId || (filters as any).authorId;
+    if (effectiveDeveloperId) {
+      where.developerId = effectiveDeveloperId;
     }
 
     if (classification) {
@@ -953,6 +954,25 @@ export class CommitsService {
       throw new NotFoundException(`Commit with ID ${id} not found`);
     }
 
+    let defectPrediction = null;
+    try {
+      if ((this.prisma as any).defectPrediction?.findFirst) {
+        defectPrediction = await (this.prisma as any).defectPrediction.findFirst({
+          where: { commitSha: commit.sha },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+    } catch {
+      // In case defectPrediction model or query fails
+    }
+
+    if (defectPrediction) {
+      return {
+        ...commit,
+        defectPrediction,
+      };
+    }
+
     return commit;
   }
 
@@ -978,8 +998,9 @@ export class CommitsService {
       };
     }
 
-    if (developerId) {
-      where.developerId = developerId;
+    const effectiveDeveloperId = developerId || (query as any).authorId;
+    if (effectiveDeveloperId) {
+      where.developerId = effectiveDeveloperId;
     }
 
     if (startDate || endDate) {
@@ -1060,6 +1081,21 @@ export class CommitsService {
           existing.count += count;
         } else {
           authorMap.set(key, { authorId: key, name, count });
+        }
+      }
+
+      const devIds = Array.from(authorMap.keys()).filter((k) => k.length === 36);
+      if (devIds.length > 0) {
+        const users = await this.prisma.user.findMany({
+          where: { id: { in: devIds } },
+          select: { id: true, name: true, avatarUrl: true },
+        });
+        const userMap = new Map(users.map((u) => [u.id, u]));
+        for (const [key, item] of authorMap.entries()) {
+          const user = userMap.get(key);
+          if (user?.avatarUrl) {
+            (item as any).avatarUrl = user.avatarUrl;
+          }
         }
       }
 
