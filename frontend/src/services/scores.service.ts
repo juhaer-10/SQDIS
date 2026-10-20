@@ -28,10 +28,20 @@ export const scoresService = {
    * Get DQS score history for a developer
    */
   async getDQSHistory(developerId: string, query?: Record<string, unknown>): Promise<ScoreHistoryPoint[]> {
-    const response = await api.get<ScoreHistoryPoint[]>(`/scores/dqs/${developerId}/history`, {
+    const response = await api.get<any>(`/scores/dqs/${developerId}/history`, {
       params: query,
     });
-    return response.data;
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    if (Array.isArray(response.data?.history)) {
+      return response.data.history.map((item: any) => ({
+        date: item.calculatedAt || item.date || item.createdAt,
+        score: item.score,
+        modelVersion: item.modelVersion,
+      }));
+    }
+    return [];
   },
 
   /**
