@@ -48,7 +48,7 @@ function AuditHeader({ activeTab }: AuditHeaderProps) {
           </Link>
 
           <Link
-            to="/audit-logs"
+            to="/audit-logs/explorer"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors ${
               activeTab === 'query'
                 ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-sm font-semibold'
